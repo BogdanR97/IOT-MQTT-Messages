@@ -1,0 +1,34 @@
+version: '3.3'
+services:
+  db:
+    image: influxdb:latest
+    volumes:
+      - ${SPRC_DVP}/influxdb:/var/lib/influxdb
+    networks:
+      - backend
+    environment:
+      - INFLUXDB_DB=sprc_db
+  broker:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1883:1883"
+    networks:
+      - frontend
+  adapter:
+    image: ${REGISTRY_HOST}/adapter:latest
+    build: ./adapter
+    networks:
+      - backend
+      - frontend
+    environment:
+      - DEBUG_DATA_FLOW=true
+    depends_on:
+      - db
+      - broker
+    command: bash -c "ruby main.rb"
+
+networks:
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay

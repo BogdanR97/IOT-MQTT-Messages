@@ -1,0 +1,88 @@
+IOT PLATFORM IMPLEMENTED WITH MICROSERVICES
+
+====== INTRODUCTION ======
+
+This project aims at creating a Docker environment capable of receving messages
+from several IoT devices via MQTT protocol, filtering and processing the data and
+eventually storing it in a time series database (TSDB).
+
+====== ARCHITECTURE ======
+
+Every component described below is distinctly run in a Docker Container.
+Each container is using an official Open-Source image from DockerHub.
+The orchestration of these services is done via a Dcoker Swarm Stack,
+the configuration of each service being described in the 'stack.yml' file.
+
+1) MESSAGE BROKER
+
+The Message Broker service is using the 'eclipse-mosquitto' image.
+The service exposes the port 1883 (the default port used for MQTT over TCP)
+on every address, waiting for incoming messages (structured as JSONs) from any device.
+This service is only communicating with the 'adapter' component of this stack via an
+overlay network (entitled fronted in 'stack.yml'),thus hardening the security 
+of the whole stack.
+
+2) ADAPTER
+
+The Adapter service serves as a bridge between the broker and the database, one that
+is also responsible for assuring data integrity and correct parsing. The adapter was built
+using a Ruby DockerHub image. The script establishes both connections - with the broker and
+the database - using open-source gems: 'mqtt', respectively, 'influxdb'. Once the connection
+with the broker is established, the script will subscribe to every topic
+(via the '#' wildcard) and will start receiving every message (JSON) that is published.
+Once the connection with the database is established, every message the script receives
+will be parsed and added to the database (if it meets the requirements). The topic will
+represent the series and the other fields of the message will be the values. If it were
+to make a comparison with the SQL paradigm, a new table would be constructed for every
+distinct series and the values would represent the columns, indexed by the timestamp.
+Moreover, every message passing though the adapter will be logged to stderr, but only
+if the environment variable DEBUG_DATA_FLOW is set to "true".The adapter communicates 
+with the database and the message broker via two distinct connections: 'backend', 
+respectively 'frontend', both defined in the 'stack.yml' file as overlay networks.
+
+3) DATABASE
+
+The database service is using the 'influxdb' DockerHub image, storing the data
+in the 'sprc_db' database, as configured in the 'stack.yml' file. Simply put, this service
+will behave in the manner described above. One thing to notice is that any same-series,
+same-timestamp new entry will replace the old one.
+
+====== DOCKER CONFIGURATION ======
+
+-> The adapter image is being built (not taken straight from the DockerHub)
+atop of the Ruby image and in order to be reachable across the Swarm Network,
+it needs to be pushed to a local registry. The 'run.sh' script will configure
+one such registry, listening for push requests on port 5000. Once the image
+has been built, it will be pushed. The environment variable REGISTRY_HOST
+is meant to store the address of the registry (in this case 'localhost:5000').
+For future Swarm Stacks configurations one can modify the value of this variable
+and the first command of the script if the location of the registry must change.
+
+-> The newtworks are using overlay drivers, so that multiple Docker Hosts in the Swarm
+can communicate.
+
+-> Modify the SPRC_DVP environment variable in the 'run.sh' script to specify the
+location of the host docker volume for persistent data storage. By default, it contains
+the absolute path to the current folder.
+
+-> By default, messages passing through the adapter are logged to stderr. If one
+wants to disable this behaviour, the value of the 'DEBUG_DATA_FLOW' in 'stack.yml'
+must be set to 'false' or the variable itself must be erased. Once this is done,
+the image must be rebuilt and then re-pushed to the registry.
+
+-> By modifing the names (or other parameters) of the services in the 'stack.yml' file,
+environment variables in the '/adapter/.env' file must be modified accordingly.
+
+====== BUILD AND RUN ======
+
+Prerequisites: The host machine must run in Docker Swarm Mode
+
+Enter these command in order to get the platform running:
+
+    1) chmod +x run.sh
+    2) source run.sh
+    3) docker stack deploy -c stack.yml sprc3
+
+To stop the platform:
+
+    1) docker rm sprc3

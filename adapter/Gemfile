@@ -1,0 +1,5 @@
+source 'https://rubygems.org'
+
+gem 'mqtt', '~> 0.5.0'
+gem 'influxdb', '~> 0.7.0'
+gem 'dotenv', '~> 2.7', '>= 2.7.5'
